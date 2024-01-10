@@ -29,12 +29,6 @@
 #include "freertos/task.h"
 #include <stdlib.h>
 #include "esp_err.h"
-//#include "nvs_flash.h"
-//#include "esp_partition.h"
-
-//#include "i_system.h"
-
-//#include "spi_lcd.h"
 
 
 extern void jsInit();
@@ -52,9 +46,8 @@ void app_main()
 	printf("start\n");
 
 	spi_lcd_init();
-	// vTaskDelay(100 / portTICK_PERIOD_MS);
 	
-	// jsInit();
+	jsInit();
 
 	xTaskCreatePinnedToCore(&doomEngineTask, "doomEngine", 18000, NULL, 5, NULL, 0);
 }

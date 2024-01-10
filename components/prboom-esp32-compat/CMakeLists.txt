@@ -18,4 +18,5 @@ idf_component_register(
         fatfs
         esp_timer
         esp_driver_i2s
+        esp_adc
 )

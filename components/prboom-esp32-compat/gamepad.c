@@ -20,6 +20,7 @@
 #include "m_argv.h"
 #include "d_event.h"
 #include "g_game.h"
+#include "i_joy.h"
 #include "d_main.h"
 #include "gamepad.h"
 #include "lprintf.h"
@@ -29,10 +30,11 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "esp_adc/adc_oneshot.h"
 
 //The gamepad uses keyboard emulation, but for compilation, these variables need to be placed
 //somewhere. This is as good a place as any.
-int usejoystick=0;
+int usejoystick=1;
 int joyleft, joyright, joyup, joydown;
 
 
@@ -42,25 +44,24 @@ volatile int joyVal=0;
 typedef struct {
 	int gpio;
 	int *key;
-	int64_t last_pressed_us;
+	int64_t last_event_us;
 } GPIOKeyMap;
 
+typedef struct {
+    int gpio;
+    bool level;
+    int64_t pressed_at_us;
+} ButtonEvent;
+
 //Mappings from PS2 buttons to keys
-static const GPIOKeyMap keymap[]={
-	// {36, &key_up},
-	// {34, &key_down},
-	// {32, &key_left},
-	// {39, &key_right},
-	
-	{CONFIG_HW_BUTTON_UP_PIN, 	 &key_fire, 		0},			
-	{CONFIG_HW_BUTTON_DOWN_PIN,  &key_use, 			0},			
-	{CONFIG_HW_BUTTON_LEFT_PIN,  &key_strafe,	 	0},
+GPIOKeyMap keymap[]={
+	{CONFIG_HW_BUTTON_DOWN_PIN,  &key_fire, 		0},			
+	{CONFIG_HW_BUTTON_UP_PIN,    &key_strafe, 		0},			
+	{CONFIG_HW_BUTTON_LEFT_PIN,  &key_use,	 	    0},
 	{CONFIG_HW_BUTTON_RIGHT_PIN, &key_speed, 		0},
 	{CONFIG_HW_BUTTON_JOY_PIN,   &key_menu_enter, 	0},
-
-	// {0, NULL},
 };
-const int num_keys = sizeof(keymap) / sizeof(keymap[0]);
+const int num_keys = sizeof(keymap) / sizeof(GPIOKeyMap);
 
 /*	
 	{0x2000, &key_menu_enter},		//circle
@@ -85,88 +86,135 @@ void gamepadPoll(void)
 
 static QueueHandle_t gpio_evt_queue = NULL;
 
+static adc_oneshot_unit_handle_t adc_handle;
+
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
-    uint32_t gpio_num = (uint32_t) arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-/*			event_t ev;
-			int level = gpio_get_level(gpio_num);
-			for (int i=0; keymap[i].key!=NULL; i++)
-				if(keymap[i].gpio == gpio_num)
-				{
-					ev.type=level?ev_keyup:ev_keydown;
-					ev.data1=*keymap[i].key;
-					D_PostEvent(&ev);
-				}
-*/
+    int gpio_num = (int) arg;
+    bool level = gpio_get_level(gpio_num) != 0;
+    int64_t time_us = esp_timer_get_time();
+
+    ButtonEvent event = {
+        .gpio = gpio_num,
+        .level = level,
+        .pressed_at_us = time_us,
+    };
+
+    xQueueSendFromISR(gpio_evt_queue, &event, NULL);
 }
 
 
 void gpioTask(void *arg) {
 	lprintf(LO_INFO, "GPIO task running...\n");
 
-    uint32_t io_num;
-	int level;
+    ButtonEvent event;
 	event_t ev;
 
-	// TODO button debounce
-
     while(true) {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+        TickType_t timeout = CONFIG_HW_JOYSTICK_SAMPLE_INTERVAL_US / portTICK_PERIOD_MS;
+
+        // === sample buttons ===
+        if(xQueueReceive(gpio_evt_queue, &event, timeout)) {
 			for (int i=0; i < num_keys; i++) {
-				if(keymap[i].gpio == io_num)
+                GPIOKeyMap *cur_map = &keymap[i];
+
+				if(cur_map->gpio == event.gpio)
 				{
-					level = gpio_get_level(io_num);
-					lprintf(LO_INFO, "GPIO[%d] intr, val: %d\n", (int)io_num, (int)level);
-					ev.type=level?ev_keyup:ev_keydown;
-					ev.data1=*keymap[i].key;
-					D_PostEvent(&ev);
+                    // debounce TODO improve
+                    int64_t tdiff_us = event.pressed_at_us - cur_map->last_event_us;
+
+                    if(tdiff_us > CONFIG_HW_DEBOUNCE_THRESHOLD_US) {
+                        cur_map->last_event_us = event.pressed_at_us;
+
+                        printf("key: %d, level: %d, tdiff: %d\n", *cur_map->key, event.level, (int)tdiff_us);
+
+                        // buttons are pulled low
+                        ev.type = event.level ? ev_keyup : ev_keydown;
+                        ev.data1 = *cur_map->key;
+                        D_PostEvent(&ev);
+
+                        // todo implement a button state confirm a few ms later or something
+                    }
 				}
 			}
         }
+
+        // === sample joystick ===
+        int32_t x_raw, y_raw;
+
+        // read 0-3.3V -> 12 bit unsigned
+        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_0, &x_raw));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_1, &y_raw));
+
+        int x_val = (x_raw >> 4) - 127;
+        int y_val = (y_raw >> 4) - 127;
+
+        int x_dir = 0, y_dir = 0;
+
+        if (x_val > CONFIG_HW_JOYSTICK_DEADZONE) x_dir = 1;
+        if (x_val < -CONFIG_HW_JOYSTICK_DEADZONE) x_dir = -1;
+        if (y_val > CONFIG_HW_JOYSTICK_DEADZONE) y_dir = -1;
+        if (y_val < -CONFIG_HW_JOYSTICK_DEADZONE) y_dir = 1;
+
+        ev.type = ev_joystick;
+        ev.data1 = 0;
+        ev.data2 = x_dir;
+        ev.data3 = y_dir;
+        D_PostEvent(&ev);
+
+        // printf("Joystick X: %d, Y: %d\n", x_val, y_val);
     }
 }
 
-void gamepadInit(void)
+void jsInit(void) 
 {
-	lprintf(LO_INFO, "gamepadInit: Initializing game pad.\n");
-}
+	lprintf(LO_INFO, "gamepad init...\n");
 
-void jsInit() 
-{
-	lprintf(LO_INFO, "jsInit()\n");
+    // == init button interrupt handlers ==
+	gpio_config_t io_conf = {
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = 1,
+        .pull_down_en = 0,
+        .intr_type = GPIO_INTR_ANYEDGE,
+        .pin_bit_mask = 0,
+    };
 
-	gpio_config_t io_conf;
-
-    //bit mask of the pins, use GPIO... here
-	io_conf.pin_bit_mask = 0;
+    //bit mask the pins
 	for (int i=0; i < num_keys; i++) {
 		io_conf.pin_bit_mask |= (1ULL<<keymap[i].gpio);
 	}
 	
-    //set as input mode    
-    io_conf.mode = GPIO_MODE_INPUT;
-    //enable pull-up mode
-    io_conf.pull_up_en = 1;
-	//disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-
     gpio_config(&io_conf);
 
 
     //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    gpio_evt_queue = xQueueCreate(10, sizeof(ButtonEvent));
     //start gpio task
-	xTaskCreatePinnedToCore(&gpioTask, "GPIO", 1500, NULL, 7, NULL, 0);
+	xTaskCreatePinnedToCore(&gpioTask, "GPIO", 4096, NULL, 7, NULL, 1); // TODO is core 1 suitable?
 
     //install gpio isr service
-    // gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
+    gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
     //hook isr handler for specific gpio pin
 	for (int i=0; i < num_keys; i++) {
-    	// gpio_isr_handler_add(keymap[i].gpio, gpio_isr_handler, (void*) keymap[i].gpio);
+    	gpio_isr_handler_add(keymap[i].gpio, gpio_isr_handler, (void*) keymap[i].gpio);
 	}
 
-	lprintf(LO_INFO, "jsInit: GPIO task created.\n");
+    // == init adc for joystick ==
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT_1,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc_handle));
+
+    adc_oneshot_chan_cfg_t config = {
+        .bitwidth = ADC_BITWIDTH_12,
+        .atten = ADC_ATTEN_DB_12,
+    };
+
+    // x-axis on GPIO 1
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_0, &config));
+    // y-axis on GPIO 2
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_1, &config));
+
+	lprintf(LO_INFO, "gamepad init: GPIO task created.\n");
 }

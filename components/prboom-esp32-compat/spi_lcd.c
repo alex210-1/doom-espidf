@@ -96,7 +96,8 @@ static const ili_init_cmd_t ili_init_cmds[]={
     {0xC1, {0x11}, 1},
     {0xC5, {0x35, 0x3E}, 2},
     {0xC7, {0xBE}, 1},
-    {0x36, {0x28}, 1},
+    //{0x36, {0x28}, 1},
+    {0x36, {0xE8}, 1}, // rotate display 180°
     {0x3A, {0x55}, 1},
     {0xB1, {0x00, 0x1B}, 2},
     {0xF2, {0x08}, 1},
@@ -327,7 +328,7 @@ void IRAM_ATTR displayTask(void *arg) {
 
 	while(1) {
 		xSemaphoreTake(dispSem, portMAX_DELAY);
-		printf("Display task: frame.\n");
+		// printf("Display task: frame.\n");
 #ifndef DOUBLE_BUFFER
 		uint8_t *myData=(uint8_t*)currFbPtr;
 #endif

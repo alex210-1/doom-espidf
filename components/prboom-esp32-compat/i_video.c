@@ -63,7 +63,6 @@ int use_doublebuffer=0;
 
 void I_StartTic (void)
 {
-	gamepadPoll();
 }
 
 
@@ -230,7 +229,6 @@ void I_InitGraphics(void)
 
     /* Initialize the input system */
     I_InitInputs();
-	gamepadInit();
 
   }
 }
