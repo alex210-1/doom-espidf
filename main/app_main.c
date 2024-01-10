@@ -49,7 +49,12 @@ void doomEngineTask(void *pvParameters)
 
 void app_main()
 {
+	printf("start\n");
+
 	spi_lcd_init();
-	jsInit();
+	// vTaskDelay(100 / portTICK_PERIOD_MS);
+	
+	// jsInit();
+
 	xTaskCreatePinnedToCore(&doomEngineTask, "doomEngine", 18000, NULL, 5, NULL, 0);
 }

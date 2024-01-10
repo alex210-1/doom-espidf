@@ -71,19 +71,32 @@ idf_component_register(
         "z_bmalloc.c"
         "z_zone.c"
     INCLUDE_DIRS "./"
+    REQUIRES prboom-wad-tables
 )
 
 target_compile_options(
     ${COMPONENT_TARGET} PRIVATE
         "-Wno-error=char-subscripts"
         "-Wno-error=unused-value"
+        "-Wno-error=unused-const-variable"
         "-Wno-error=parentheses"
         "-Wno-error=int-to-pointer-cast"
         "-Wno-error=duplicate-decl-specifier"
         "-Wno-error=nonnull"
         "-Wno-error=misleading-indentation"
         "-Wno-error=format-overflow"
+        "-Wno-error=unused-but-set-parameter"
+        "-Wno-error=dangling-else"
+        "-Wno-error=sizeof-pointer-div"
+
         "-Wno-pointer-sign"
+        "-Wno-unused-function"
+        "-Wno-unused-variable"
         "-Wno-unused-but-set-variable"
         "-Wno-maybe-uninitialized"
+        "-Wno-missing-field-initializers"
+        "-Wno-duplicate-decl-specifier"
+        "-Wno-char-subscripts"
+        "-Wno-implicit-fallthrough"
+        "-Wno-nonnull"
 )

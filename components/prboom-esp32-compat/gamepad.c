@@ -24,11 +24,11 @@
 #include "gamepad.h"
 #include "lprintf.h"
 
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
+#include "esp_timer.h"
 
 //The gamepad uses keyboard emulation, but for compilation, these variables need to be placed
 //somewhere. This is as good a place as any.
@@ -42,20 +42,26 @@ volatile int joyVal=0;
 typedef struct {
 	int gpio;
 	int *key;
+	int64_t last_pressed_us;
 } GPIOKeyMap;
 
 //Mappings from PS2 buttons to keys
 static const GPIOKeyMap keymap[]={
-	{36, &key_up},
-	{34, &key_down},
-	{32, &key_left},
-	{39, &key_right},
+	// {36, &key_up},
+	// {34, &key_down},
+	// {32, &key_left},
+	// {39, &key_right},
 	
-	{33, &key_use},				//cross
-	{35, &key_fire},			//circle
-	{35, &key_menu_enter},
-	{0, NULL},
+	{CONFIG_HW_BUTTON_UP_PIN, 	 &key_fire, 		0},			
+	{CONFIG_HW_BUTTON_DOWN_PIN,  &key_use, 			0},			
+	{CONFIG_HW_BUTTON_LEFT_PIN,  &key_strafe,	 	0},
+	{CONFIG_HW_BUTTON_RIGHT_PIN, &key_speed, 		0},
+	{CONFIG_HW_BUTTON_JOY_PIN,   &key_menu_enter, 	0},
+
+	// {0, NULL},
 };
+const int num_keys = sizeof(keymap) / sizeof(keymap[0]);
+
 /*	
 	{0x2000, &key_menu_enter},		//circle
 	{0x8000, &key_pause},			//square
@@ -77,7 +83,7 @@ void gamepadPoll(void)
 {
 }
 
-static xQueueHandle gpio_evt_queue = NULL;
+static QueueHandle_t gpio_evt_queue = NULL;
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
@@ -97,20 +103,26 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 
 void gpioTask(void *arg) {
+	lprintf(LO_INFO, "GPIO task running...\n");
+
     uint32_t io_num;
 	int level;
 	event_t ev;
-    for(;;) {
+
+	// TODO button debounce
+
+    while(true) {
         if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-			for (int i=0; keymap[i].key!=NULL; i++)
+			for (int i=0; i < num_keys; i++) {
 				if(keymap[i].gpio == io_num)
 				{
 					level = gpio_get_level(io_num);
-					//lprintf(LO_INFO, "GPIO[%d] intr, val: %d\n", io_num, level);
+					lprintf(LO_INFO, "GPIO[%d] intr, val: %d\n", (int)io_num, (int)level);
 					ev.type=level?ev_keyup:ev_keydown;
 					ev.data1=*keymap[i].key;
 					D_PostEvent(&ev);
 				}
+			}
         }
     }
 }
@@ -122,23 +134,25 @@ void gamepadInit(void)
 
 void jsInit() 
 {
+	lprintf(LO_INFO, "jsInit()\n");
+
 	gpio_config_t io_conf;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
+
     //bit mask of the pins, use GPIO... here
-	for (int i=0; keymap[i].key!=NULL; i++)
-    	if(i==0)
-			io_conf.pin_bit_mask = (1ULL<<keymap[i].gpio);
-		else 
-			io_conf.pin_bit_mask |= (1ULL<<keymap[i].gpio);
+	io_conf.pin_bit_mask = 0;
+	for (int i=0; i < num_keys; i++) {
+		io_conf.pin_bit_mask |= (1ULL<<keymap[i].gpio);
+	}
+	
     //set as input mode    
     io_conf.mode = GPIO_MODE_INPUT;
     //enable pull-up mode
     io_conf.pull_up_en = 1;
+	//disable pull-down mode
+    io_conf.pull_down_en = 0;
+    //interrupt of rising edge
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;
+
     gpio_config(&io_conf);
 
 
@@ -148,11 +162,11 @@ void jsInit()
 	xTaskCreatePinnedToCore(&gpioTask, "GPIO", 1500, NULL, 7, NULL, 0);
 
     //install gpio isr service
-    gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
+    // gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
     //hook isr handler for specific gpio pin
-	for (int i=0; keymap[i].key!=NULL; i++)
-    	gpio_isr_handler_add(keymap[i].gpio, gpio_isr_handler, (void*) keymap[i].gpio);
+	for (int i=0; i < num_keys; i++) {
+    	// gpio_isr_handler_add(keymap[i].gpio, gpio_isr_handler, (void*) keymap[i].gpio);
+	}
 
 	lprintf(LO_INFO, "jsInit: GPIO task created.\n");
 }
-

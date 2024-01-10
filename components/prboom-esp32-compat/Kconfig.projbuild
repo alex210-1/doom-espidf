@@ -46,50 +46,116 @@ config HW_LCD_TYPE
 config HW_LCD_MISO_GPIO_CUST
 	int "LCD MISO pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 19
 
 config HW_LCD_MOSI_GPIO_CUST
 	int "LCD MOSI pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 23
 
 
 config HW_LCD_CLK_GPIO_CUST
 	int "LCD CLK pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 18
 
 config HW_LCD_CS_GPIO_CUST
 	int "LCD CS pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 5
 
 config HW_LCD_DC_GPIO_CUST
 	int "LCD DC pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 22
 
 config HW_LCD_RESET_GPIO_CUST
 	int "LCD RESET pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 21
 
 config HW_LCD_BL_GPIO_CUST
 	int "LCD Backlight Enable pin"
 	depends on HW_CUSTOM
-	range 1 35
+	range 1 48
 	default 5
 
 config HW_INV_BL_CUST
 	bool "Invert backlight output"
 	default n
 	depends on HW_CUSTOM
+
+
+config HW_SD_CS
+	int "SD CS pin"
+	range 1 48
+	default 7
+
+config HW_SD_MOSI
+	int "SD MOSI pin"
+	range 1 48
+	default 6
+
+config HW_SD_MISO
+	int "SD MISO pin"
+	range 1 48
+	default 5
+
+config HW_SD_SCK
+	int "SD SCK pin"
+	range 1 48
+	default 4
+
+
+config HW_BUTTON_UP_PIN
+	int "Button UP pin"
+	range 1 48
+	default 42
+	
+config HW_BUTTON_DOWN_PIN
+	int "Button DOWN pin"
+	range 1 48
+	default 41
+
+config HW_BUTTON_LEFT_PIN
+	int "Button LEFT pin"
+	range 1 48
+	default 40
+
+config HW_BUTTON_RIGHT_PIN
+	int "Button RIGHT pin"
+	range 1 48
+	default 39
+
+config HW_BUTTON_JOY_PIN
+	int "Button Joystick pin"
+	range 1 48
+	default 38
+
+
+config HW_JOY_AXIS_X_PIN
+	int "Joystick X-Axis pin"
+	range 1 48
+	default 1
+
+config HW_JOY_AXIS_Y_PIN
+	int "Joystick Y-Axis pin"
+	range 1 48
+	default 2
+
+config HW_JOY_AXIS_X_INV
+	bool "Invert X-Axis"
+	default n
+
+config HW_JOY_AXIS_Y_INV
+	bool "Invert Y-Axis"
+	default n
 
 
 config HW_INV_BL
@@ -144,25 +210,25 @@ config HW_PSX_ENA
 config HW_PSX_CLK
 	int "PSX controller CLK GPIO pin"
 	depends on HW_PSX_ENA
-	range 1 35
+	range 1 48
 	default 14
 
 config HW_PSX_DAT
 	int "PSX controller DATa GPIO pin"
 	depends on HW_PSX_ENA
-	range 1 35
+	range 1 48
 	default 27
 
 config HW_PSX_ATT
 	int "PSX controller ATTention GPIO pin"
 	depends on HW_PSX_ENA
-	range 1 35
+	range 1 48
 	default 4
 
 config HW_PSX_CMD
 	int "PSX controller CoMmanD GPIO pin"
 	depends on HW_PSX_ENA
-	range 1 35
+	range 1 48
 	default 2
 
 endmenu

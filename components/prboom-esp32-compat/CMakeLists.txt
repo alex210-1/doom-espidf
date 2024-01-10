@@ -9,5 +9,13 @@ idf_component_register(
         "psxcontroller.c"
         "spi_lcd.c"
     INCLUDE_DIRS "include"
-    REQUIRES prboom
+    REQUIRES
+        prboom
+        freertos
+        driver
+        esp_partition
+        spi_flash
+        fatfs
+        esp_timer
+        esp_driver_i2s
 )
