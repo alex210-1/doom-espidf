@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS 
+        "gamepad.c"
+        "i_main.c"
+        "i_network.c"
+        "i_sound.c"
+        "i_system.c"
+        "i_video.c"
+        "psxcontroller.c"
+        "spi_lcd.c"
+    INCLUDE_DIRS "include"
+    REQUIRES
+        prboom
+        freertos
+        driver
+        esp_partition
+        spi_flash
+        fatfs
+        esp_timer
+        esp_driver_i2s
+        esp_adc
+)

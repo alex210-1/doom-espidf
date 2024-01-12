@@ -462,12 +462,14 @@ void IRAM_ATTR updateTask(void *arg)
   }
 }
 
+// TODO port to new I2S api
+// TODO ESP32S3 doesn't have a DAC, use I2S PDM output and a lowpass filter instead
 void I_InitSound(void)
 {
   mixbuffer = malloc(MIXBUFFERSIZE*sizeof(unsigned char));
 
   static const i2s_config_t i2s_config = {
-    .mode = I2S_MODE_MASTER | I2S_MODE_TX | /*I2S_MODE_PDM,*/ I2S_MODE_DAC_BUILT_IN,
+    .mode = I2S_MODE_MASTER | I2S_MODE_TX, /*I2S_MODE_PDM,*/ //I2S_MODE_DAC_BUILT_IN,
     .sample_rate = SAMPLERATE,
     .bits_per_sample = SAMPLESIZE*8, /* the DAC module will only take the 8bits from MSB */
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
@@ -482,7 +484,8 @@ void I_InitSound(void)
 
   i2s_set_pin(I2S_NUM_0, NULL); //for internal DAC, this will enable both of the internal channels
 
-  i2s_set_dac_mode(I2S_DAC_CHANNEL_LEFT_EN);  
+  // TODO disabled
+  // i2s_set_dac_mode(I2S_DAC_CHANNEL_LEFT_EN);  
 /*    
       Values:
 

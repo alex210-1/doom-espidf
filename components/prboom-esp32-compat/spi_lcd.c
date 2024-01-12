@@ -96,7 +96,8 @@ static const ili_init_cmd_t ili_init_cmds[]={
     {0xC1, {0x11}, 1},
     {0xC5, {0x35, 0x3E}, 2},
     {0xC7, {0xBE}, 1},
-    {0x36, {0x28}, 1},
+    //{0x36, {0x28}, 1},
+    {0x36, {0xE8}, 1}, // rotate display 180°
     {0x3A, {0x55}, 1},
     {0xB1, {0x00, 0x1B}, 2},
     {0xF2, {0x08}, 1},
@@ -156,19 +157,22 @@ void ili_spi_pre_transfer_callback(spi_transaction_t *t)
 //Initialize the display
 void ili_init(spi_device_handle_t spi) 
 {
+    printf("*** Display initialization starting.\n");
+
     int cmd=0;
     //Initialize non-SPI GPIOs
     gpio_set_direction(PIN_NUM_DC, GPIO_MODE_OUTPUT);
     gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
-    //gpio_set_direction(PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
+    gpio_set_direction(PIN_NUM_BCKL, GPIO_MODE_OUTPUT);
 
     //Reset the display
     gpio_set_level(PIN_NUM_RST, 0);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
     gpio_set_level(PIN_NUM_RST, 1);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
 
     //Send all the commands
+    //TODO refactor out terminated array access, it has a fixed size, damnit
     while (ili_init_cmds[cmd].databytes!=0xff) {
         uint8_t dmdata[16];
         ili_cmd(spi, ili_init_cmds[cmd].cmd);
@@ -176,16 +180,18 @@ void ili_init(spi_device_handle_t spi)
         memcpy(dmdata, ili_init_cmds[cmd].data, 16);
         ili_data(spi, dmdata, ili_init_cmds[cmd].databytes&0x1F);
         if (ili_init_cmds[cmd].databytes&0x80) {
-            vTaskDelay(100 / portTICK_RATE_MS);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
         }
         cmd++;
     }
 
+    printf("*** Enabling Backlight\n");
+
     ///Enable backlight
 #if CONFIG_HW_INV_BL
-    //gpio_set_level(PIN_NUM_BCKL, 0);
+    gpio_set_level(PIN_NUM_BCKL, 0);
 #else
-    //gpio_set_level(PIN_NUM_BCKL, 1);
+    gpio_set_level(PIN_NUM_BCKL, 1);
 #endif
 
 }
@@ -281,10 +287,12 @@ void IRAM_ATTR displayTask(void *arg) {
         .sclk_io_num=PIN_NUM_CLK,
         .quadwp_io_num=-1,
         .quadhd_io_num=-1,
-        .max_transfer_sz=(MEM_PER_TRANS*2)+16
+        .max_transfer_sz=(MEM_PER_TRANS*2)+16,
     };
     spi_device_interface_config_t devcfg={
-        .clock_speed_hz=40000000,               //Clock out at 26 MHz. Yes, that's heavily overclocked.
+        // TODO increase back to 40MHz
+        // Datasheet of display says 10Mhz
+        .clock_speed_hz=26000000,               //Clock out at 26 MHz. Yes, that's heavily overclocked.
         .mode=0,                                //SPI mode 0
         .spics_io_num=PIN_NUM_CS,               //CS pin
         .queue_size=NO_SIM_TRANS,               //We want to be able to queue this many transfers
@@ -293,13 +301,13 @@ void IRAM_ATTR displayTask(void *arg) {
 
 	printf("*** Display task starting.\n");
 
-    //heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    // heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     //Initialize the SPI bus
-    ret=spi_bus_initialize(VSPI_HOST, &buscfg, 2);  // DMA Channel
+    ret=spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO );  // DMA Channel
     assert(ret==ESP_OK);
     //Attach the LCD to the SPI bus
-    ret=spi_bus_add_device(VSPI_HOST, &devcfg, &spi);
+    ret=spi_bus_add_device(SPI2_HOST, &devcfg, &spi);
     assert(ret==ESP_OK);
     //Initialize the LCD
     ili_init(spi);
@@ -316,9 +324,11 @@ void IRAM_ATTR displayTask(void *arg) {
 	}
 	xSemaphoreGive(dispDoneSem);
 
+    printf("*** Display task running.\n");
+
 	while(1) {
 		xSemaphoreTake(dispSem, portMAX_DELAY);
-//		printf("Display task: frame.\n");
+		// printf("Display task: frame.\n");
 #ifndef DOUBLE_BUFFER
 		uint8_t *myData=(uint8_t*)currFbPtr;
 #endif

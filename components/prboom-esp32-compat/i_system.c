@@ -97,19 +97,10 @@
 #include <sys/time.h>
 
 #define MODE_SPI 1
-#define PIN_NUM_MISO 2 //4
-#define PIN_NUM_MOSI 13
-#define PIN_NUM_CLK  14
-#define PIN_NUM_CS   15
-
-/*
-SDMMC pin configuration
-#define MODE_SPI 0
-MOSI = 15
-MISO = 2
-CLK = 14
-*/
-
+#define PIN_NUM_MISO CONFIG_HW_SD_MISO
+#define PIN_NUM_MOSI CONFIG_HW_SD_MOSI
+#define PIN_NUM_CLK  CONFIG_HW_SD_SCK
+#define PIN_NUM_CS   CONFIG_HW_SD_CS
 
 int realtime=0;
 //SemaphoreHandle_t dmaChannel2Sem;
@@ -122,7 +113,7 @@ void I_uSleep(unsigned long usecs)
 static unsigned long getMsTicks() {
   //struct timeval tv;
   //struct timezone tz;
-  unsigned long thistimereply;
+  //unsigned long thistimereply;
 
   //gettimeofday(&tv, &tz);
   unsigned long now = esp_timer_get_time() / 1000;
@@ -194,16 +185,33 @@ static bool init_SD = false;
 
 void Init_SD()
 {
+	esp_err_t ret;
+
+	lprintf(LO_INFO, "Initializing SD card\n");
+
 #if MODE_SPI == 1	
 	sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-	//host.command_timeout_ms=200;
-	//host.max_freq_khz = SDMMC_FREQ_PROBING;
-    sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-    slot_config.gpio_miso = PIN_NUM_MISO;
-    slot_config.gpio_mosi = PIN_NUM_MOSI;
-    slot_config.gpio_sck  = PIN_NUM_CLK;
-    slot_config.gpio_cs   = PIN_NUM_CS;
-	slot_config.dma_channel = 1; //2
+	host.slot = SPI3_HOST;
+	// host.max_freq_khz = 1000; // 1MHz for testing TODO increase
+
+	spi_bus_config_t bus_cfg = {
+        .mosi_io_num = PIN_NUM_MOSI,
+        .miso_io_num = PIN_NUM_MISO,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4000,
+    };
+    ret = spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
+    if (ret != ESP_OK) {
+		lprintf(LO_INFO, "Init_SD: Failed to initialize bus.\n");
+        return;
+    }
+
+	sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = PIN_NUM_CS;
+    slot_config.host_id = host.slot;
+
 #else
 	sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 	host.flags = SDMMC_HOST_FLAG_1BIT;
@@ -218,13 +226,13 @@ void Init_SD()
     };
 
 	sdmmc_card_t* card;
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
 
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
             lprintf(LO_INFO, "Init_SD: Failed to mount filesystem.\n");
         } else {
-           lprintf(LO_INFO, "Init_SD: Failed to initialize the card. %d\n", ret);
+            lprintf(LO_INFO, "Init_SD: Failed to initialize the card. %d\n", ret);
         }
         return;
     }
