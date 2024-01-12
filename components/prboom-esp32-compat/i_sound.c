@@ -463,6 +463,7 @@ void IRAM_ATTR updateTask(void *arg)
 }
 
 // TODO port to new I2S api
+// TODO ESP32S3 doesn't have a DAC, use I2S PDM output and a lowpass filter instead
 void I_InitSound(void)
 {
   mixbuffer = malloc(MIXBUFFERSIZE*sizeof(unsigned char));
